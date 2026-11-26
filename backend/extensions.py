@@ -1,5 +1,7 @@
 """MongoDB connection aur JWT setup."""
 
+from urllib.parse import quote, unquote
+
 from flask import current_app
 from flask_jwt_extended import JWTManager
 from pymongo import ASCENDING, MongoClient
@@ -15,11 +17,26 @@ def init_db(app):
 
         client = mongomock.MongoClient()
     else:
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        client = MongoClient(safe_mongo_uri(uri), serverSelectionTimeoutMS=5000)
 
     app.extensions["mongo_client"] = client
     app.extensions["mongo_db"] = client[app.config["MONGO_DB_NAME"]]
     create_indexes(app.extensions["mongo_db"])
+
+
+def safe_mongo_uri(uri):
+    """Password mein @ : / jaise nishaan hon to unhein khud theek kar do."""
+    scheme, sep, rest = uri.partition("://")
+    if not sep or "@" not in rest:
+        return uri
+
+    userinfo, _, hosts = rest.rpartition("@")
+    user, colon, password = userinfo.partition(":")
+    safe = quote(unquote(user), safe="")
+    if colon:
+        safe += ":" + quote(unquote(password), safe="")
+
+    return f"{scheme}://{safe}@{hosts}"
 
 
 def get_db():
