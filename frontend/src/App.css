@@ -4867,3 +4867,24 @@
     justify-content: center;
   }
 }
+
+
+/* ---------- Browser autofill: white/blue background hatao ---------- */
+/* Chrome jab saved email/password bharta hai to input ko safed kar deta hai.
+   Yeh rules input ko apne dark rang mein hi rakhte hain. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+.login-input-wrap input:-webkit-autofill,
+.register-input-wrap input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #19191f inset !important;
+  box-shadow: 0 0 0 1000px #19191f inset !important;
+}
