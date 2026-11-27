@@ -1,4 +1,3 @@
-
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ShoppingBag,
@@ -6,6 +5,7 @@ import {
   X,
   LogOut,
   Heart,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getWishlist } from "../data/wishlistStore";
@@ -134,17 +134,13 @@ export default function Navbar({ cartCount = 0 }) {
             </NavLink>
           ))}
 
-          {/* Mobile menu: login/register/logout yahan dikhte hain */}
+          {/* Mobile menu: login/logout yahan dikhte hain */}
           <div className="nav-mobile-auth">
             {!user && (
-              <>
-                <Link to="/login" className="secondary-btn" onClick={() => setOpen(false)}>
-                  Login
-                </Link>
-                <Link to="/register" className="primary-btn" onClick={() => setOpen(false)}>
-                  Register
-                </Link>
-              </>
+              <Link to="/login" className="primary-btn" onClick={() => setOpen(false)}>
+                <UserRound size={16} />
+                Login
+              </Link>
             )}
 
             {user && (
@@ -169,22 +165,15 @@ export default function Navbar({ cartCount = 0 }) {
             <span>{wishlistCount}</span>
           </Link>
 
+          {/* Sirf ek button: Login page par "Create Account" ka link maujood hai */}
           {!user && (
-            <>
-              <Link
-                to="/login"
-                className="secondary-btn nav-desktop-only"
-              >
-                Login
-              </Link>
-
-              <Link
-                to="/register"
-                className="primary-btn nav-desktop-only"
-              >
-                Register
-              </Link>
-            </>
+            <Link
+              to="/login"
+              className="primary-btn nav-desktop-only"
+            >
+              <UserRound size={16} />
+              Login
+            </Link>
           )}
 
           {user?.role !== "admin" && (
