@@ -1,11 +1,6 @@
 
 import { useEffect, useMemo, useState } from "react";
-import { getProducts } from "../data/productStore";
-import { getCategories } from "../data/categoryStore";
-import {
-  getWishlist,
-  toggleWishlist as updateWishlist,
-} from "../data/wishlistStore";
+import { useCategories, useProducts, useWishlist } from "../data/hooks";
 
 import ProductCard from "../components/ProductCard";
 
@@ -21,43 +16,19 @@ import {
 } from "lucide-react";
 
 export default function Products({ addToCart }) {
-  const [products, setProducts] = useState(() => getProducts());
-  const [categories, setCategories] = useState(() => getCategories());
+  const { products, loading, error } = useProducts();
+  const categories = useCategories();
 
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("default");
   const [search, setSearch] = useState("");
-  const [wishlist, setWishlist] = useState(() => getWishlist());
+  const { wishlist, handleWishlist } = useWishlist();
 
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 12;
-
-  useEffect(() => {
-    function refreshWishlist() {
-      setWishlist(getWishlist());
-    }
-
-    function refreshProducts() {
-      setProducts(getProducts());
-      setCategories(getCategories());
-    }
-
-    window.addEventListener("wishlistUpdated", refreshWishlist);
-    window.addEventListener("productsUpdated", refreshProducts);
-
-    return () => {
-      window.removeEventListener("wishlistUpdated", refreshWishlist);
-      window.removeEventListener("productsUpdated", refreshProducts);
-    };
-  }, []);
-
-  function handleWishlist(productId) {
-    const updated = updateWishlist(productId);
-    setWishlist(updated);
-  }
 
   const priceLimits = useMemo(() => {
     const prices = products
@@ -118,7 +89,9 @@ export default function Products({ addToCart }) {
     }
 
     if (sort === "newest") {
-      result.sort((a, b) => Number(b.id) - Number(a.id));
+      result.sort(
+        (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+      );
     }
 
     return result;
@@ -388,7 +361,16 @@ export default function Products({ addToCart }) {
           </div>
 
           {/* PRODUCTS GRID */}
-          {visibleProducts.length > 0 ? (
+          {loading ? (
+            <div className="shop-empty-state">
+              <h3>Loading products...</h3>
+            </div>
+          ) : error ? (
+            <div className="shop-empty-state">
+              <h3>Could not load products</h3>
+              <p>{error}</p>
+            </div>
+          ) : visibleProducts.length > 0 ? (
             <div className="product-grid shop-product-grid">
               {visibleProducts.map((product) => (
                 <ProductCard

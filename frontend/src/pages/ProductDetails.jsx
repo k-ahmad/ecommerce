@@ -1,17 +1,11 @@
 
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import { getProducts } from "../data/productStore";
-import {
-  getReviews,
-  saveReview,
-} from "../data/reviewStore";
-
-import {
-  getWishlist,
-  toggleWishlist,
-} from "../data/wishlistStore";
+import { addReview, fetchReviews } from "../data/reviewStore";
+import { useProducts, useWishlist } from "../data/hooks";
+import { getCurrentUser, isLoggedIn } from "../api/client";
+import { formatOrderDate } from "../data/orderStore";
 
 import ProductCard from "../components/ProductCard";
 
@@ -27,67 +21,42 @@ import {
 export default function ProductDetails({ addToCart }) {
   const { id } = useParams();
 
-  const [products, setProducts] = useState(() => getProducts());
-  const [wishlist, setWishlist] = useState(() => getWishlist());
+  const navigate = useNavigate();
+  const { products, loading } = useProducts();
+  const { wishlist, handleWishlist } = useWishlist();
 
   const product = products.find(
     (p) => String(p.id) === String(id)
   );
 
-  const [reviews, setReviews] = useState(() =>
-    product ? getReviews(product.id) : []
-  );
-
+  const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const [reviewName, setReviewName] = useState(() => {
-    try {
-      const user = JSON.parse(
-        localStorage.getItem("demoUser") || "null"
-      );
+  const loggedIn = isLoggedIn();
+  const reviewName = loggedIn ? getCurrentUser()?.name || "" : "";
 
-      return user?.name || "";
-    } catch {
-      return "";
-    }
-  });
-
+  // Reviews server se lao
   useEffect(() => {
-    function refreshProducts() {
-      setProducts(getProducts());
-    }
-
-    function refreshWishlist() {
-      setWishlist(getWishlist());
-    }
-
-    window.addEventListener("productsUpdated", refreshProducts);
-    window.addEventListener("wishlistUpdated", refreshWishlist);
-
+    let alive = true;
+    fetchReviews(id)
+      .then((items) => alive && setReviews(items))
+      .catch(() => alive && setReviews([]));
     return () => {
-      window.removeEventListener("productsUpdated", refreshProducts);
-      window.removeEventListener("wishlistUpdated", refreshWishlist);
+      alive = false;
     };
-  }, []);
+  }, [id]);
 
-  useEffect(() => {
-    setReviews(product ? getReviews(product.id) : []);
-  }, [id, products]);
-
-  useEffect(() => {
-    if (!product) return;
-
-    function refreshReviews() {
-      setReviews(getReviews(product.id));
-    }
-
-    window.addEventListener("reviewsUpdated", refreshReviews);
-
-    return () => {
-      window.removeEventListener("reviewsUpdated", refreshReviews);
-    };
-  }, [id, product?.id]);
+  if (!product && loading) {
+    return (
+      <main className="container section">
+        <div className="pd-not-found">
+          <h2>Loading product...</h2>
+        </div>
+      </main>
+    );
+  }
 
   if (!product) {
     return (
@@ -116,11 +85,12 @@ export default function ProductDetails({ addToCart }) {
     (item) => String(item) === String(product.id)
   );
 
-  function handleReviewSubmit(e) {
+  async function handleReviewSubmit(e) {
     e.preventDefault();
 
-    if (!reviewName.trim()) {
-      alert("Please enter your name.");
+    if (!loggedIn) {
+      alert("Please login to write a review.");
+      navigate("/login");
       return;
     }
 
@@ -129,29 +99,21 @@ export default function ProductDetails({ addToCart }) {
       return;
     }
 
-    const newReview = {
-      productId: product.id,
-      name: reviewName.trim(),
-      rating: Number(rating),
-      comment: reviewText.trim(),
-      date: new Date().toLocaleDateString("en-PK"),
-    };
-
-    const saved = saveReview(newReview);
-
-    if (saved) {
-      setReviews(getReviews(product.id));
+    setSubmitting(true);
+    try {
+      const saved = await addReview(product.id, {
+        rating: Number(rating),
+        comment: reviewText.trim(),
+      });
+      setReviews((current) => [saved, ...current]);
       setRating(5);
       setReviewText("");
       alert("Your review has been submitted!");
-    } else {
-      alert("Review could not be saved. Please try again.");
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
     }
-  }
-
-  function handleWishlist(productId) {
-    const updated = toggleWishlist(productId);
-    setWishlist(updated);
   }
 
   const relatedProducts = products
@@ -378,14 +340,15 @@ export default function ProductDetails({ addToCart }) {
           >
             <h3>Write Your Review</h3>
 
-            <label>Your Name</label>
-
-            <input
-              type="text"
-              placeholder="Enter your name"
-              value={reviewName}
-              onChange={(e) => setReviewName(e.target.value)}
-            />
+            {loggedIn ? (
+              <p>
+                Reviewing as <strong>{reviewName}</strong>
+              </p>
+            ) : (
+              <p>
+                <Link to="/login">Login</Link> to write a review.
+              </p>
+            )}
 
             <label>Your Rating</label>
 
@@ -415,8 +378,12 @@ export default function ProductDetails({ addToCart }) {
               onChange={(e) => setReviewText(e.target.value)}
             />
 
-            <button type="submit" className="pd-submit-review">
-              Submit Review
+            <button
+              type="submit"
+              className="pd-submit-review"
+              disabled={submitting}
+            >
+              {submitting ? "Submitting..." : "Submit Review"}
             </button>
           </form>
 
@@ -431,8 +398,8 @@ export default function ProductDetails({ addToCart }) {
                 <div className="pd-review-card" key={review.id}>
                   <div className="pd-review-card-top">
                     <div>
-                      <strong>{review.name}</strong>
-                      <small>{review.date}</small>
+                      <strong>{review.userName}</strong>
+                      <small>{formatOrderDate(review.created_at)}</small>
                     </div>
 
                     <div className="pd-review-card-stars">

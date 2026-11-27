@@ -11,6 +11,7 @@ import {
   Sparkles,
   ShieldCheck,
 } from "lucide-react";
+import { register as registerRequest } from "../data/authStore";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -22,38 +23,27 @@ export default function Register() {
     password: "",
   });
 
-  function register(e) {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function register(e) {
     e.preventDefault();
+    if (submitting) return;
 
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-
-    const existingUser = users.find(
-      (user) =>
-        user.email.toLowerCase() === form.email.trim().toLowerCase()
-    );
-
-    if (existingUser) {
-      alert("This email is already registered. Please login.");
-      return;
+    setSubmitting(true);
+    try {
+      await registerRequest({
+        name: form.name,
+        email: form.email,
+        phone: form.phone.trim(),
+        password: form.password,
+      });
+      alert("Account created successfully!");
+      navigate("/account");
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setSubmitting(false);
     }
-
-    const newUser = {
-      id: Date.now(),
-      name: form.name.trim(),
-      email: form.email.trim().toLowerCase(),
-      phone: form.phone.trim(),
-      password: form.password,
-      isBlocked: false,
-    };
-
-    const updatedUsers = [...users, newUser];
-
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    localStorage.setItem("demoUser", JSON.stringify(newUser));
-
-    alert("Account created successfully!");
-
-    navigate("/account");
   }
 
   return (
@@ -192,7 +182,7 @@ export default function Register() {
                   id="register-phone"
                   type="tel"
                   placeholder="03XXXXXXXXX"
-                  pattern="[0-9+ -]{10,15}"
+                  pattern="[0-9+ \-]{10,15}"
                   title="Please enter a valid phone number"
                   required
                   value={form.phone}
@@ -214,7 +204,7 @@ export default function Register() {
                   id="register-password"
                   type="password"
                   placeholder="Create password"
-                  minLength="6"
+                  minLength="8"
                   required
                   value={form.password}
                   onChange={(e) =>
@@ -224,13 +214,17 @@ export default function Register() {
               </div>
 
               <small className="register-password-hint">
-                Password must be at least 6 characters.
+                Password must be at least 8 characters, with letters and numbers.
               </small>
             </div>
 
             {/* SUBMIT */}
-            <button type="submit" className="register-submit">
-              Create My Account
+            <button
+              type="submit"
+              className="register-submit"
+              disabled={submitting}
+            >
+              {submitting ? "Creating account..." : "Create My Account"}
               <ArrowRight size={19} />
             </button>
 

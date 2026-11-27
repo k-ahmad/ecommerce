@@ -11,22 +11,21 @@ import {
   ShieldCheck,
   Edit3,
 } from "lucide-react";
+import { getCurrentUser, isLoggedIn } from "../api/client";
+import { logout as logoutRequest, refreshMe, updateProfile as saveProfile } from "../data/authStore";
 
 export default function Account() {
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("demoUser") || "null");
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(() =>
+    isLoggedIn() ? getCurrentUser() : null
+  );
 
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -36,40 +35,31 @@ export default function Account() {
 
     if (user.role === "admin") {
       navigate("/admin", { replace: true });
-      return;
-    }
-
-    if (user.role !== "customer") {
-      localStorage.removeItem("demoUser");
-      navigate("/login", { replace: true });
-      return;
-    }
-
-    try {
-      const users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
-
-      const savedUser = users.find(
-        (item) =>
-          item.email?.toLowerCase() === user.email?.toLowerCase()
-      );
-
-      if (savedUser?.isBlocked) {
-        localStorage.removeItem("demoUser");
-        setUser(null);
-        alert("Your account has been blocked. Please contact support.");
-        navigate("/login", { replace: true });
-      }
-    } catch (error) {
-      console.error("Account verification error:", error);
     }
   }, [user, navigate]);
 
-  function updateProfile(e) {
+  // Server se taaza data lao (block hua ho to logout ho jayega)
+  useEffect(() => {
+    if (!isLoggedIn()) return;
+
+    refreshMe()
+      .then((fresh) => {
+        setUser(fresh);
+        setName(fresh.name || "");
+        setPhone(fresh.phone || "");
+      })
+      .catch((error) => {
+        if (error.status === 401 || error.status === 403) {
+          alert(error.message);
+          setUser(null);
+        }
+      });
+  }, []);
+
+  async function updateProfile(e) {
     e.preventDefault();
 
-    if (!user || user.role !== "customer") return;
+    if (!user || user.role !== "customer" || saving) return;
 
     if (!name.trim() || !phone.trim()) {
       setMessageType("error");
@@ -77,63 +67,25 @@ export default function Account() {
       return;
     }
 
+    setSaving(true);
     try {
-      const users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
-
-      const savedUser = users.find(
-        (item) =>
-          item.email?.toLowerCase() === user.email?.toLowerCase()
-      );
-
-      if (savedUser?.isBlocked) {
-        localStorage.removeItem("demoUser");
-        setUser(null);
-        alert("Your account has been blocked.");
-        navigate("/login");
-        return;
-      }
-
-      const updatedUser = {
-        ...user,
+      const updatedUser = await saveProfile({
         name: name.trim(),
         phone: phone.trim(),
-      };
-
-      localStorage.setItem(
-        "demoUser",
-        JSON.stringify(updatedUser)
-      );
-
-      const updatedUsers = users.map((item) =>
-        item.email?.toLowerCase() === user.email?.toLowerCase()
-          ? {
-              ...item,
-              name: updatedUser.name,
-              phone: updatedUser.phone,
-            }
-          : item
-      );
-
-      localStorage.setItem(
-        "users",
-        JSON.stringify(updatedUsers)
-      );
-
+      });
       setUser(updatedUser);
       setMessageType("success");
       setMessage("Profile updated successfully!");
-      window.dispatchEvent(new Event("usersUpdated"));
     } catch (error) {
-      console.error("Profile update error:", error);
       setMessageType("error");
-      setMessage("Unable to update profile. Please try again.");
+      setMessage(error.message || "Unable to update profile. Please try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
   function logout() {
-    localStorage.removeItem("demoUser");
+    logoutRequest();
     setUser(null);
     navigate("/login");
   }
@@ -263,7 +215,7 @@ export default function Account() {
                   id="account-phone"
                   type="tel"
                   required
-                  pattern="[0-9+ -]{10,15}"
+                  pattern="[0-9+ \-]{10,15}"
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value);

@@ -1,48 +1,34 @@
+import { apiData } from "../api/client";
 
-const defaultCategories = [
-  { id: 1, name: "Electronics", icon: "🎧" },
-  { id: 2, name: "Fashion", icon: "👟" },
-  { id: 3, name: "Accessories", icon: "⌚" },
-  { id: 4, name: "Lifestyle", icon: "✨" },
-];
+let cache = null;
 
-export function getCategories() {
-  try {
-    const saved = localStorage.getItem("categories");
-
-    if (!saved) {
-      localStorage.setItem(
-        "categories",
-        JSON.stringify(defaultCategories)
-      );
-      return defaultCategories;
-    }
-
-    const savedCategories = JSON.parse(saved);
-
-    // Purani default categories ko preserve karo
-    const merged = [...defaultCategories];
-
-    savedCategories.forEach((category) => {
-      const index = merged.findIndex(
-        (item) => String(item.id) === String(category.id)
-      );
-
-      if (index >= 0) {
-        merged[index] = category;
-      } else {
-        merged.push(category);
-      }
-    });
-
-    localStorage.setItem("categories", JSON.stringify(merged));
-    return merged;
-  } catch (error) {
-    console.error("Categories loading error:", error);
-    return defaultCategories;
-  }
+// Har category: { id, name, icon, productCount }
+export async function fetchCategories({ force = false } = {}) {
+  if (cache && !force) return cache;
+  cache = await apiData("/categories");
+  return cache;
 }
 
-export function saveCategories(categories) {
-  localStorage.setItem("categories", JSON.stringify(categories));
+function changed() {
+  cache = null;
+  window.dispatchEvent(new Event("productsUpdated"));
+}
+
+// ---------- ADMIN ----------
+
+export async function createCategory({ name, icon }) {
+  const saved = await apiData("/categories", { method: "POST", body: { name, icon } });
+  changed();
+  return saved;
+}
+
+export async function updateCategory(id, fields) {
+  const saved = await apiData(`/categories/${id}`, { method: "PUT", body: fields });
+  changed();
+  return saved;
+}
+
+export async function deleteCategory(id) {
+  await apiData(`/categories/${id}`, { method: "DELETE" });
+  changed();
 }

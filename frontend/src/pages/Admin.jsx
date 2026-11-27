@@ -14,19 +14,30 @@ import {
   Save,
   UserCheck,
   UserX,
-  Search,
   AlertTriangle,
 } from "lucide-react";
 
 import {
-  getProducts,
-  saveProducts as storeProducts,
+  fetchProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct as removeProduct,
 } from "../data/productStore";
 
 import {
-  getCategories,
-  saveCategories as storeCategories,
+  fetchCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory as removeCategory,
 } from "../data/categoryStore";
+
+import {
+  fetchAllOrders,
+  formatOrderDate,
+  updateOrderStatus,
+} from "../data/orderStore";
+
+import { fetchUsers, toggleUserBlock } from "../data/adminStore";
 
 export default function Admin() {
   const [orders, setOrders] = useState([]);
@@ -64,40 +75,42 @@ export default function Admin() {
   const [form, setForm] = useState(emptyProduct);
 
   // -----------------------------
-  // LOAD DATA
+  // LOAD DATA (sab kuch server se)
   // -----------------------------
 
-  function loadOrders() {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("orders") || "[]"
-      );
+  function showError(error) {
+    alert(error?.message || "Something went wrong. Please try again.");
+  }
 
-      setOrders(Array.isArray(saved) ? saved : []);
+  async function loadOrders() {
+    try {
+      setOrders(await fetchAllOrders());
     } catch (error) {
       console.error("Orders loading error:", error);
-      setOrders([]);
     }
   }
 
-  function loadProducts() {
-    setProducts(getProducts());
-  }
-
-  function loadCategories() {
-    setCategories(getCategories());
-  }
-
-  function loadCustomers() {
+  async function loadProducts() {
     try {
-      const saved = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
+      setProducts(await fetchProducts({ force: true }));
+    } catch (error) {
+      console.error("Products loading error:", error);
+    }
+  }
 
-      setCustomers(Array.isArray(saved) ? saved : []);
+  async function loadCategories() {
+    try {
+      setCategories(await fetchCategories({ force: true }));
+    } catch (error) {
+      console.error("Categories loading error:", error);
+    }
+  }
+
+  async function loadCustomers() {
+    try {
+      setCustomers(await fetchUsers());
     } catch (error) {
       console.error("Users loading error:", error);
-      setCustomers([]);
     }
   }
 
@@ -110,52 +123,19 @@ export default function Admin() {
 
   useEffect(() => {
     refreshDashboard();
-
-    const handleOrdersUpdate = () => loadOrders();
-    const handleProductsUpdate = () => loadProducts();
-    const handleUsersUpdate = () => loadCustomers();
-
-    window.addEventListener("ordersUpdated", handleOrdersUpdate);
-    window.addEventListener("productsUpdated", handleProductsUpdate);
-    window.addEventListener("usersUpdated", handleUsersUpdate);
-
-    return () => {
-      window.removeEventListener("ordersUpdated", handleOrdersUpdate);
-      window.removeEventListener("productsUpdated", handleProductsUpdate);
-      window.removeEventListener("usersUpdated", handleUsersUpdate);
-    };
   }, []);
-
-  // -----------------------------
-  // SAVE PRODUCTS
-  // -----------------------------
-
-  function saveProductList(updatedProducts) {
-    const saved = storeProducts(updatedProducts);
-
-    if (!saved) {
-      alert("Unable to save products. Please try again.");
-      return false;
-    }
-
-    setProducts(updatedProducts);
-    window.dispatchEvent(new Event("productsUpdated"));
-
-    return true;
-  }
 
   // -----------------------------
   // PRODUCT MANAGEMENT
   // -----------------------------
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     const name = form.name.trim();
     const price = Number(form.price);
     const oldPrice = Number(form.oldPrice || 0);
     const stock = Number(form.stock);
-    const rating = Number(form.rating || 5);
 
     if (!name || !form.category || !form.image.trim()) {
       alert("Please complete all required product fields.");
@@ -168,12 +148,9 @@ export default function Admin() {
       !Number.isFinite(oldPrice) ||
       oldPrice < 0 ||
       !Number.isInteger(stock) ||
-      stock < 0 ||
-      !Number.isFinite(rating) ||
-      rating < 0 ||
-      rating > 5
+      stock < 0
     ) {
-      alert("Please enter valid price, stock and rating values.");
+      alert("Please enter valid price and stock values.");
       return;
     }
 
@@ -188,37 +165,32 @@ export default function Admin() {
       return;
     }
 
+    // Rating customers ke reviews se khud banti hai, is liye nahi bhejte
     const productData = {
-      ...form,
-      id: editingId !== null ? editingId : Date.now(),
       name,
       category: form.category,
       price,
-      oldPrice,
+      oldPrice: oldPrice || null,
       stock,
-      rating,
       badge: form.badge.trim(),
       description: form.description.trim(),
       image: form.image.trim(),
     };
 
-    let updated;
+    try {
+      if (editingId !== null) {
+        await updateProduct(editingId, productData);
+      } else {
+        await createProduct(productData);
+      }
 
-    if (editingId !== null) {
-      updated = products.map((product) =>
-        String(product.id) === String(editingId)
-          ? productData
-          : product
-      );
-    } else {
-      updated = [...products, productData];
-    }
-
-    if (saveProductList(updated)) {
+      await loadProducts();
       setForm(emptyProduct);
       setEditingId(null);
       setShowForm(false);
       alert(editingId !== null ? "Product updated!" : "Product added!");
+    } catch (error) {
+      showError(error);
     }
   }
 
@@ -238,7 +210,7 @@ export default function Admin() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function deleteProduct(id) {
+  async function deleteProduct(id) {
     const product = products.find(
       (item) => String(item.id) === String(id)
     );
@@ -251,12 +223,14 @@ export default function Admin() {
       return;
     }
 
-    const updated = products.filter(
-      (item) => String(item.id) !== String(id)
-    );
-
-    if (saveProductList(updated)) {
+    try {
+      await removeProduct(id);
+      setProducts((current) =>
+        current.filter((item) => String(item.id) !== String(id))
+      );
       alert("Product deleted successfully.");
+    } catch (error) {
+      showError(error);
     }
   }
 
@@ -270,7 +244,7 @@ export default function Admin() {
   // CATEGORY MANAGEMENT
   // -----------------------------
 
-  function handleCategorySubmit(e) {
+  async function handleCategorySubmit(e) {
     e.preventDefault();
 
     const name = categoryForm.name.trim();
@@ -280,74 +254,28 @@ export default function Admin() {
       return;
     }
 
-    const duplicate = categories.some(
-      (category) =>
-        category.name.toLowerCase() === name.toLowerCase() &&
-        String(category.id) !== String(editingCategoryId)
-    );
+    const icon = categoryForm.icon.trim() || "📦";
 
-    if (duplicate) {
-      alert("This category already exists.");
-      return;
-    }
-
-    const oldCategory = categories.find(
-      (category) =>
-        String(category.id) === String(editingCategoryId)
-    );
-
-    let updatedCategories;
-
-    if (editingCategoryId !== null) {
-      updatedCategories = categories.map((category) =>
-        String(category.id) === String(editingCategoryId)
-          ? {
-              ...category,
-              name,
-              icon: categoryForm.icon.trim() || "📦",
-            }
-          : category
-      );
-
-      // Category rename hone par products bhi update karo
-      if (oldCategory && oldCategory.name !== name) {
-        const updatedProducts = products.map((product) =>
-          product.category === oldCategory.name
-            ? { ...product, category: name }
-            : product
-        );
-
-        if (!saveProductList(updatedProducts)) {
-          return;
-        }
+    try {
+      if (editingCategoryId !== null) {
+        // Rename hone par server products ki category bhi badal deta hai
+        await updateCategory(editingCategoryId, { name, icon });
+      } else {
+        await createCategory({ name, icon });
       }
-    } else {
-      updatedCategories = [
-        ...categories,
-        {
-          id: Date.now(),
-          name,
-          icon: categoryForm.icon.trim() || "📦",
-        },
-      ];
+
+      await Promise.all([loadCategories(), loadProducts()]);
+      setCategoryForm({ name: "", icon: "📦" });
+      setEditingCategoryId(null);
+
+      alert(
+        editingCategoryId !== null
+          ? "Category updated successfully."
+          : "Category added successfully."
+      );
+    } catch (error) {
+      showError(error);
     }
-
-    const saved = storeCategories(updatedCategories);
-
-    if (saved === false) {
-      alert("Unable to save categories.");
-      return;
-    }
-
-    setCategories(updatedCategories);
-    setCategoryForm({ name: "", icon: "📦" });
-    setEditingCategoryId(null);
-
-    alert(
-      editingCategoryId !== null
-        ? "Category updated successfully."
-        : "Category added successfully."
-    );
   }
 
   function editCategory(category) {
@@ -364,7 +292,7 @@ export default function Admin() {
     setCategoryForm({ name: "", icon: "📦" });
   }
 
-  function deleteCategory(id) {
+  async function deleteCategory(id) {
     const category = categories.find(
       (item) => String(item.id) === String(id)
     );
@@ -388,229 +316,71 @@ export default function Admin() {
       return;
     }
 
-    const updated = categories.filter(
-      (item) => String(item.id) !== String(id)
-    );
+    try {
+      await removeCategory(id);
+      await loadCategories();
 
-    const saved = storeCategories(updated);
+      if (String(editingCategoryId) === String(id)) {
+        cancelCategoryEdit();
+      }
 
-    if (saved === false) {
-      alert("Unable to delete category.");
-      return;
+      alert("Category deleted successfully.");
+    } catch (error) {
+      showError(error);
     }
-
-    setCategories(updated);
-
-    if (String(editingCategoryId) === String(id)) {
-      cancelCategoryEdit();
-    }
-
-    alert("Category deleted successfully.");
   }
-
-{/* COUPON MANAGEMENT */}
-<div className="admin-orders">
-  <div className="admin-section-heading">
-    <div>
-      <h2>Coupon Management</h2>
-      <p>Create, edit and manage discount coupons.</p>
-    </div>
-  </div>
-
-  <CouponManagement />
-</div>
-
 
   // -----------------------------
   // ORDER MANAGEMENT
   // -----------------------------
 
-  function updateStatus(orderId, newStatus) {
-    let originalProducts = [];
-    let stockChanged = false;
+  async function updateStatus(orderId, newStatus) {
+    const order = orders.find((item) => String(item.id) === String(orderId));
+    if (!order || order.status === newStatus) return;
+
+    if (
+      newStatus === "Cancelled" &&
+      !window.confirm("Cancel this order? Stock will be returned, and a cancelled order cannot be reopened.")
+    ) {
+      return;
+    }
 
     try {
-      const latestOrders = JSON.parse(
-        localStorage.getItem("orders") || "[]"
+      // Cancel par stock server khud wapas karta hai
+      const updated = await updateOrderStatus(orderId, newStatus);
+      setOrders((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
       );
 
-      const targetOrder = latestOrders.find(
-        (order) => String(order.id) === String(orderId)
-      );
-
-      if (!targetOrder) {
-        alert("Order not found.");
-        return;
+      if (newStatus === "Cancelled") {
+        loadProducts();
       }
-
-      if (targetOrder.status === newStatus) return;
-
-      originalProducts = getProducts();
-
-      const quantities = new Map();
-
-      (targetOrder.items || []).forEach((item) => {
-        const quantity = Number(item.quantity);
-
-        if (!Number.isInteger(quantity) || quantity <= 0) {
-          throw new Error("Invalid product quantity in this order.");
-        }
-
-        const id = String(item.id);
-
-        quantities.set(
-          id,
-          (quantities.get(id) || 0) + quantity
-        );
-      });
-
-      let updatedProducts = [...originalProducts];
-
-      // Cancel order: restore stock once
-      if (
-        newStatus === "Cancelled" &&
-        targetOrder.stockDeducted === true &&
-        targetOrder.stockRestored !== true
-      ) {
-        updatedProducts = originalProducts.map((product) => {
-          const quantity =
-            quantities.get(String(product.id)) || 0;
-
-          if (!quantity) return product;
-
-          return {
-            ...product,
-            stock: Number(product.stock) + quantity,
-          };
-        });
-
-        if (!storeProducts(updatedProducts)) {
-          throw new Error("Unable to restore product stock.");
-        }
-
-        stockChanged = true;
-      }
-
-      // Reactivate cancelled order: deduct stock again
-      if (
-        targetOrder.status === "Cancelled" &&
-        newStatus !== "Cancelled" &&
-        targetOrder.stockDeducted === true &&
-        targetOrder.stockRestored === true
-      ) {
-        for (const [id, quantity] of quantities) {
-          const product = originalProducts.find(
-            (item) => String(item.id) === id
-          );
-
-          if (!product || Number(product.stock) < quantity) {
-            alert(
-              "Insufficient stock to reactivate this order."
-            );
-            return;
-          }
-        }
-
-        updatedProducts = originalProducts.map((product) => {
-          const quantity =
-            quantities.get(String(product.id)) || 0;
-
-          if (!quantity) return product;
-
-          return {
-            ...product,
-            stock: Number(product.stock) - quantity,
-          };
-        });
-
-        if (!storeProducts(updatedProducts)) {
-          throw new Error("Unable to update product stock.");
-        }
-
-        stockChanged = true;
-      }
-
-      const updatedOrders = latestOrders.map((order) => {
-        if (String(order.id) !== String(orderId)) {
-          return order;
-        }
-
-        return {
-          ...order,
-          status: newStatus,
-
-          ...(newStatus === "Cancelled" &&
-          order.stockDeducted === true
-            ? { stockRestored: true }
-            : {}),
-
-          ...(order.status === "Cancelled" &&
-          newStatus !== "Cancelled" &&
-          order.stockDeducted === true
-            ? { stockRestored: false }
-            : {}),
-        };
-      });
-
-      localStorage.setItem(
-        "orders",
-        JSON.stringify(updatedOrders)
-      );
-
-      setOrders(updatedOrders);
-
-      if (stockChanged) {
-        setProducts(updatedProducts);
-      }
-
-      window.dispatchEvent(new Event("ordersUpdated"));
-      window.dispatchEvent(new Event("productsUpdated"));
     } catch (error) {
-      console.error("Order status update error:", error);
-
-      if (stockChanged) {
-        storeProducts(originalProducts);
-        setProducts(originalProducts);
-      }
-
-      alert(
-        error.message ||
-          "Unable to update order status. Please try again."
-      );
+      showError(error);
+      loadOrders();
     }
   }
-
 
   // -----------------------------
   // CUSTOMER MANAGEMENT
   // -----------------------------
 
-  function toggleUserStatus(user) {
-    const updatedUsers = customers.map((customer) => {
-      const sameUser =
-        String(customer.id || customer.email) ===
-        String(user.id || user.email);
-
-      return sameUser
-        ? { ...customer, isBlocked: !customer.isBlocked }
-        : customer;
-    });
-
+  async function toggleUserStatus(user) {
     try {
-      localStorage.setItem("users", JSON.stringify(updatedUsers));
-
-      setCustomers(updatedUsers);
-
-      window.dispatchEvent(new Event("usersUpdated"));
+      const updated = await toggleUserBlock(user.id);
+      setCustomers((current) =>
+        current.map((customer) =>
+          customer.id === updated.id ? updated : customer
+        )
+      );
 
       alert(
-        user.isBlocked
-          ? "Customer unblocked successfully."
-          : "Customer blocked successfully."
+        updated.isBlocked
+          ? "Customer blocked successfully."
+          : "Customer unblocked successfully."
       );
     } catch (error) {
-      console.error("User update error:", error);
-      alert("Unable to update customer status.");
+      showError(error);
     }
   }
 
@@ -755,7 +525,10 @@ export default function Admin() {
           );
         })}
       </div>
-        <SalesReports />
+        <SalesReports orders={orders} />
+
+      {/* COUPON MANAGEMENT */}
+      <CouponManagement />
       {/* STOCK ALERTS */}
       <div className="admin-orders">
         <div className="admin-section-heading">
@@ -941,18 +714,6 @@ export default function Admin() {
                 value={form.badge}
                 onChange={(e) =>
                   setForm({ ...form, badge: e.target.value })
-                }
-              />
-
-              <input
-                type="number"
-                min="0"
-                max="5"
-                step="0.1"
-                placeholder="Rating"
-                value={form.rating}
-                onChange={(e) =>
-                  setForm({ ...form, rating: e.target.value })
                 }
               />
 
@@ -1234,7 +995,6 @@ export default function Admin() {
           >
             <option value="All">All Orders</option>
             <option value="Pending">Pending</option>
-            <option value="Processing">Processing</option>
             <option value="Shipped">Shipped</option>
             <option value="Delivered">Delivered</option>
             <option value="Cancelled">Cancelled</option>
@@ -1288,12 +1048,13 @@ export default function Admin() {
                       Rs. {Number(order.total || 0).toLocaleString("en-PK")}
                     </td>
 
-                    <td>{order.date || "-"}</td>
+                    <td>{formatOrderDate(order.created_at) || "-"}</td>
 
                     <td>
                       <select
                         className="admin-status-select"
                         value={order.status || "Pending"}
+                        disabled={order.status === "Cancelled"}
                         onChange={(e) =>
                           updateStatus(order.id, e.target.value)
                         }

@@ -7,6 +7,8 @@ import {
   CalendarDays,
   Download,
 } from "lucide-react";
+import { getCurrentUser, isLoggedIn } from "../api/client";
+import { cancelOrder, fetchMyOrders, formatOrderDate } from "../data/orderStore";
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -14,91 +16,33 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [checking, setChecking] = useState(true);
 
-  function loadOrders() {
+  const [loadError, setLoadError] = useState("");
+  const [cancellingId, setCancellingId] = useState(null);
+
+  async function loadOrders() {
+    const currentUser = isLoggedIn() ? getCurrentUser() : null;
+
+    if (!currentUser) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    if (currentUser.role === "admin") {
+      navigate("/admin", { replace: true });
+      return;
+    }
+
     try {
-      const currentUser = JSON.parse(
-        localStorage.getItem("demoUser") || "null"
-      );
-
-      if (!currentUser) {
-        setOrders([]);
-        setChecking(false);
-        navigate("/login", { replace: true });
-        return;
-      }
-
-      if (currentUser.role === "admin") {
-        setOrders([]);
-        setChecking(false);
-        navigate("/admin", { replace: true });
-        return;
-      }
-
-      if (currentUser.role !== "customer") {
-        setOrders([]);
-        setChecking(false);
-        navigate("/login", { replace: true });
-        return;
-      }
-
-      const users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
-
-      const savedUser = users.find(
-        (item) =>
-          item.email?.toLowerCase() ===
-          currentUser.email?.toLowerCase()
-      );
-
-      if (savedUser?.isBlocked) {
-        localStorage.removeItem("demoUser");
-        setOrders([]);
-        setChecking(false);
-
-        alert(
-          "Your account has been blocked. Please contact support."
-        );
-
-        navigate("/login", { replace: true });
-        return;
-      }
-
-      const savedOrders = JSON.parse(
-        localStorage.getItem("orders") || "[]"
-      );
-
-      if (!currentUser.email) {
-        setOrders([]);
-        setChecking(false);
-        return;
-      }
-
-      const userEmail = currentUser.email.toLowerCase();
-
-      const userOrders = savedOrders.filter((order) => {
-        const orderEmail = (
-          order.email ||
-          order.customer?.email ||
-          ""
-        ).toLowerCase();
-
-        if (orderEmail) {
-          return orderEmail === userEmail;
-        }
-
-        return (
-          order.customer?.name === currentUser.name &&
-          order.customer?.phone === currentUser.phone &&
-          Boolean(currentUser.phone)
-        );
-      });
-
-      setOrders(userOrders);
-      setChecking(false);
+      setOrders(await fetchMyOrders());
+      setLoadError("");
     } catch (error) {
-      console.error("Orders loading error:", error);
-      setOrders([]);
+      if (error.status === 401 || error.status === 403) {
+        alert(error.message);
+        navigate("/login", { replace: true });
+        return;
+      }
+      setLoadError(error.message);
+    } finally {
       setChecking(false);
     }
   }
@@ -106,16 +50,28 @@ export default function Orders() {
   useEffect(() => {
     loadOrders();
 
-    window.addEventListener("storage", loadOrders);
-    window.addEventListener("focus", loadOrders);
     window.addEventListener("ordersUpdated", loadOrders);
 
     return () => {
-      window.removeEventListener("storage", loadOrders);
-      window.removeEventListener("focus", loadOrders);
       window.removeEventListener("ordersUpdated", loadOrders);
     };
   }, []);
+
+  async function handleCancel(order) {
+    if (!window.confirm("Are you sure you want to cancel this order?")) return;
+
+    setCancellingId(order.id);
+    try {
+      const updated = await cancelOrder(order.id);
+      setOrders((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   // Invoice ke liye HTML special characters safe karta hai
   function escapeHTML(value) {
@@ -167,8 +123,10 @@ export default function Orders() {
 
     const discount = Number(order.discount || 0);
 
+    const deliveryFee = Number(order.deliveryFee || 0);
+
     const total = Number(
-      order.total ?? Math.max(0, subtotal - discount)
+      order.total ?? Math.max(0, subtotal - discount) + deliveryFee
     );
 
     const orderId = escapeHTML(
@@ -359,7 +317,7 @@ export default function Orders() {
             <div class="invoice-info">
               <h1>INVOICE</h1>
               <p><strong>Invoice #:</strong> ${orderId}</p>
-              <p><strong>Date:</strong> ${escapeHTML(order.date || "N/A")}</p>
+              <p><strong>Date:</strong> ${escapeHTML(formatOrderDate(order.created_at) || "N/A")}</p>
               <p><strong>Status:</strong> ${escapeHTML(order.status || "Pending")}</p>
             </div>
           </div>
@@ -414,6 +372,11 @@ export default function Orders() {
             </div>
 
             <div class="total-row">
+              <span>Delivery</span>
+              <strong>${deliveryFee === 0 ? "Free" : `Rs. ${formatMoney(deliveryFee)}`}</strong>
+            </div>
+
+            <div class="total-row">
               <span>Payment</span>
               <strong>${escapeHTML(order.paymentMethod || "Cash on Delivery")}</strong>
             </div>
@@ -458,6 +421,19 @@ export default function Orders() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="page-container empty-orders">
+        <Package size={58} />
+        <h1>Could not load orders</h1>
+        <p>{loadError}</p>
+        <button type="button" className="primary-btn" onClick={loadOrders}>
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   if (orders.length === 0) {
     return (
       <div className="page-container empty-orders">
@@ -497,7 +473,6 @@ export default function Orders() {
         {orders.map((order) => {
   const trackingSteps = [
     "Pending",
-    "Processing",
     "Shipped",
     "Delivered",
   ];
@@ -527,7 +502,7 @@ export default function Orders() {
       <div className="order-meta">
         <span>
           <CalendarDays size={15} />
-          {order.date || "Date unavailable"}
+          {formatOrderDate(order.created_at) || "Date unavailable"}
         </span>
 
         <span>
@@ -570,7 +545,7 @@ export default function Orders() {
         {(order.items || []).map((item, index) => (
           <div
             className="order-product"
-            key={`${item.id}-${index}`}
+            key={`${item.productId || item.id}-${index}`}
           >
             <img
               src={item.image}
@@ -631,8 +606,19 @@ export default function Orders() {
         </div>
       )}
 
-      {/* DOWNLOAD INVOICE */}
+      {/* DOWNLOAD INVOICE / CANCEL */}
       <div className="order-invoice-action">
+        {currentStatus === "Pending" && (
+          <button
+            type="button"
+            className="secondary-btn"
+            disabled={cancellingId === order.id}
+            onClick={() => handleCancel(order)}
+          >
+            {cancellingId === order.id ? "Cancelling..." : "Cancel Order"}
+          </button>
+        )}
+
         <button
           type="button"
           className="primary-btn"

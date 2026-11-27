@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CheckCircle,
 } from "lucide-react";
+import { sendContactMessage } from "../data/adminStore";
 
 export default function Contact() {
   const [form, setForm] = useState({
@@ -37,7 +38,7 @@ export default function Contact() {
     {
       question: "Can I cancel my order?",
       answer:
-        "You can contact our support team for help with cancellation. Your order status may affect cancellation availability.",
+        "Yes. Pending orders can be cancelled from the My Orders page. Once an order has shipped, please contact our support team.",
     },
     {
       question: "How can I contact customer support?",
@@ -55,25 +56,15 @@ export default function Contact() {
     }));
   }
 
-  function sendMessage(e) {
+  const [sending, setSending] = useState(false);
+
+  async function sendMessage(e) {
     e.preventDefault();
+    if (sending) return;
 
+    setSending(true);
     try {
-      const messages = JSON.parse(
-        localStorage.getItem("contactMessages") || "[]"
-      );
-
-      const newMessage = {
-        id: Date.now(),
-        ...form,
-        date: new Date().toISOString(),
-        status: "New",
-      };
-
-      localStorage.setItem(
-        "contactMessages",
-        JSON.stringify([...messages, newMessage])
-      );
+      await sendContactMessage(form);
 
       setSuccess(true);
 
@@ -89,8 +80,9 @@ export default function Contact() {
         setSuccess(false);
       }, 5000);
     } catch (error) {
-      console.error("Message submission error:", error);
-      alert("Unable to submit your message. Please try again.");
+      alert(error.message || "Unable to submit your message. Please try again.");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -251,8 +243,12 @@ export default function Contact() {
             />
           </div>
 
-          <button type="submit" className="primary-btn contact-submit">
-            Send Message <Send size={17} />
+          <button
+            type="submit"
+            className="primary-btn contact-submit"
+            disabled={sending}
+          >
+            {sending ? "Sending..." : "Send Message"} <Send size={17} />
           </button>
 
           <p className="contact-form-note">

@@ -1,8 +1,10 @@
 
 import { useEffect, useState } from "react";
 import {
-  getCoupons,
-  saveCoupons,
+  fetchCoupons,
+  createCoupon,
+  updateCoupon,
+  deleteCoupon as removeCoupon,
 } from "../data/couponStore";
 import {
   Plus,
@@ -23,21 +25,21 @@ export default function CouponManagement() {
     active: true,
   };
 
-  const [coupons, setCoupons] = useState(getCoupons);
+  const [coupons, setCoupons] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
-    function refresh() {
-      setCoupons(getCoupons());
+  async function loadCoupons() {
+    try {
+      setCoupons(await fetchCoupons());
+    } catch (error) {
+      console.error("Coupons loading error:", error);
     }
+  }
 
-    window.addEventListener("couponsUpdated", refresh);
-
-    return () => {
-      window.removeEventListener("couponsUpdated", refresh);
-    };
+  useEffect(() => {
+    loadCoupons();
   }, []);
 
   function resetForm() {
@@ -46,15 +48,15 @@ export default function CouponManagement() {
     setShowForm(false);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     const code = form.code.trim().toUpperCase();
     const value = Number(form.value);
     const minOrder = Number(form.minOrder);
 
-    if (!/^[A-Z0-9_-]{3,20}$/.test(code)) {
-      alert("Coupon code must be 3-20 characters (letters/numbers).");
+    if (!/^[A-Z0-9]{3,20}$/.test(code)) {
+      alert("Coupon code must be 3-20 letters or numbers (no spaces or symbols).");
       return;
     }
 
@@ -76,11 +78,6 @@ export default function CouponManagement() {
       return;
     }
 
-    if (!form.expiry) {
-      alert("Please select coupon expiry date.");
-      return;
-    }
-
     const duplicate = coupons.some(
       (coupon) =>
         coupon.code.toUpperCase() === code &&
@@ -93,36 +90,32 @@ export default function CouponManagement() {
     }
 
     const couponData = {
-      ...form,
-      id: editingId !== null ? editingId : Date.now(),
       code,
+      type: form.type,
       value,
       minOrder,
+      expiry: form.expiry || null, // khali = kabhi expire nahi
       active: Boolean(form.active),
     };
 
-    const updated =
-      editingId !== null
-        ? coupons.map((coupon) =>
-            String(coupon.id) === String(editingId)
-              ? couponData
-              : coupon
-          )
-        : [...coupons, couponData];
+    try {
+      if (editingId !== null) {
+        await updateCoupon(editingId, couponData);
+      } else {
+        await createCoupon(couponData);
+      }
 
-    if (!saveCoupons(updated)) {
-      alert("Unable to save coupon.");
-      return;
+      await loadCoupons();
+      resetForm();
+
+      alert(
+        editingId !== null
+          ? "Coupon updated successfully."
+          : "Coupon created successfully."
+      );
+    } catch (error) {
+      alert(error.message);
     }
-
-    setCoupons(updated);
-    resetForm();
-
-    alert(
-      editingId !== null
-        ? "Coupon updated successfully."
-        : "Coupon created successfully."
-    );
   }
 
   function editCoupon(coupon) {
@@ -139,7 +132,7 @@ export default function CouponManagement() {
     setShowForm(true);
   }
 
-  function deleteCoupon(id) {
+  async function deleteCoupon(id) {
     const coupon = coupons.find(
       (item) => String(item.id) === String(id)
     );
@@ -148,37 +141,31 @@ export default function CouponManagement() {
       return;
     }
 
-    const updated = coupons.filter(
-      (item) => String(item.id) !== String(id)
-    );
+    try {
+      await removeCoupon(id);
+      setCoupons((current) =>
+        current.filter((item) => String(item.id) !== String(id))
+      );
 
-    if (!saveCoupons(updated)) {
-      alert("Unable to delete coupon.");
-      return;
+      if (String(editingId) === String(id)) {
+        resetForm();
+      }
+
+      alert("Coupon deleted successfully.");
+    } catch (error) {
+      alert(error.message);
     }
-
-    setCoupons(updated);
-
-    if (String(editingId) === String(id)) {
-      resetForm();
-    }
-
-    alert("Coupon deleted successfully.");
   }
 
-  function toggleCoupon(coupon) {
-    const updated = coupons.map((item) =>
-      String(item.id) === String(coupon.id)
-        ? { ...item, active: !item.active }
-        : item
-    );
-
-    if (!saveCoupons(updated)) {
-      alert("Unable to update coupon.");
-      return;
+  async function toggleCoupon(coupon) {
+    try {
+      const updated = await updateCoupon(coupon.id, { active: !coupon.active });
+      setCoupons((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+    } catch (error) {
+      alert(error.message);
     }
-
-    setCoupons(updated);
   }
 
   return (
@@ -284,7 +271,7 @@ export default function CouponManagement() {
               onChange={(e) =>
                 setForm({ ...form, expiry: e.target.value })
               }
-              required
+              title="Leave empty for a coupon that never expires"
             />
 
             <select
@@ -351,7 +338,7 @@ export default function CouponManagement() {
                   Rs. {Number(coupon.minOrder).toLocaleString("en-PK")}
                 </td>
 
-                <td>{coupon.expiry || "-"}</td>
+                <td>{coupon.expiry || "No expiry"}</td>
 
                 <td>
                   <button

@@ -97,7 +97,7 @@ def list_products():
         query["stock"] = {"$gt": 0}
 
     page = positive_int(args.get("page"), default=1)
-    limit = min(100, positive_int(args.get("limit"), default=12))
+    limit = min(500, positive_int(args.get("limit"), default=12))
     sort = SORTS.get(args.get("sort", "newest"), SORTS["newest"])
 
     products = get_db().products

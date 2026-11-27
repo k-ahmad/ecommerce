@@ -1,46 +1,41 @@
-
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart, Trash2 } from "lucide-react";
-import { getProducts } from "../data/productStore";
-import {
-  getWishlist,
-  toggleWishlist,
-} from "../data/wishlistStore";
+import { isLoggedIn } from "../api/client";
+import { toggleWishlist } from "../data/wishlistStore";
+import { useProducts, useWishlist } from "../data/hooks";
 import ProductCard from "../components/ProductCard";
 
 export default function Wishlist({ addToCart }) {
-  const [wishlist, setWishlist] = useState(getWishlist);
-  const [products, setProducts] = useState(getProducts);
-
-  useEffect(() => {
-    function refreshWishlist() {
-      setWishlist(getWishlist());
-      setProducts(getProducts());
-    }
-
-    window.addEventListener("wishlistUpdated", refreshWishlist);
-    window.addEventListener("productsUpdated", refreshWishlist);
-
-    return () => {
-      window.removeEventListener(
-        "wishlistUpdated",
-        refreshWishlist
-      );
-      window.removeEventListener(
-        "productsUpdated",
-        refreshWishlist
-      );
-    };
-  }, []);
+  const { products } = useProducts();
+  const { wishlist, handleWishlist } = useWishlist();
 
   const wishlistProducts = products.filter((product) =>
     wishlist.includes(String(product.id))
   );
 
-  function removeProduct(productId) {
-    const updated = toggleWishlist(productId);
-    setWishlist(updated);
+  async function clearWishlist() {
+    try {
+      for (const product of wishlistProducts) {
+        await toggleWishlist(product.id);
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  if (!isLoggedIn()) {
+    return (
+      <main className="container page section">
+        <div className="wishlist-empty">
+          <Heart size={55} />
+          <h2>Login to see your wishlist</h2>
+          <p>Your favorite products are saved in your account.</p>
+          <Link to="/login" className="primary-btn">
+            Login
+          </Link>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -64,12 +59,7 @@ export default function Wishlist({ addToCart }) {
 
             <button
               className="wishlist-clear-btn"
-              onClick={() => {
-                wishlistProducts.forEach((product) => {
-                  toggleWishlist(product.id);
-                });
-                setWishlist(getWishlist());
-              }}
+              onClick={clearWishlist}
             >
               <Trash2 size={16} />
               Clear Wishlist
@@ -83,7 +73,7 @@ export default function Wishlist({ addToCart }) {
                 product={product}
                 addToCart={addToCart}
                 isWishlisted={true}
-                toggleWishlist={removeProduct}
+                toggleWishlist={handleWishlist}
               />
             ))}
           </div>

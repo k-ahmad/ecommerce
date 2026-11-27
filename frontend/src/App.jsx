@@ -19,18 +19,17 @@ import About from "./pages/About";
 import Admin from "./pages/Admin";
 import Wishlist from "./pages/Wishlist";
 
+import { getCurrentUser, isLoggedIn } from "./api/client";
+import { refreshMe } from "./data/authStore";
+import { fetchProducts } from "./data/productStore";
+import { loadWishlist } from "./data/wishlistStore";
+
 import "./App.css";
 import "./styles/Pages.css";
 
 // ADMIN SECURITY
 function AdminRoute({ children }) {
-  let currentUser = null;
-
-  try {
-    currentUser = JSON.parse(localStorage.getItem("demoUser") || "null");
-  } catch (error) {
-    console.error("User loading error:", error);
-  }
+  const currentUser = isLoggedIn() ? getCurrentUser() : null;
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -66,6 +65,36 @@ function Store() {
   useEffect(() => {
     localStorage.setItem("cart", JSON.stringify(cart));
   }, [cart]);
+
+  // APP SHURU HONE PAR: login check, wishlist, aur cart ko database se milao
+  useEffect(() => {
+    if (isLoggedIn()) {
+      refreshMe()
+        .then(() => loadWishlist())
+        .catch(() => {});
+    }
+
+    fetchProducts()
+      .then((products) => {
+        const byId = new Map(products.map((p) => [String(p.id), p]));
+
+        // Purane (ya delete ho chuke) products cart se hatao, qeemat/stock taaza karo
+        setCart((currentCart) =>
+          currentCart
+            .filter((item) => byId.has(String(item.id)))
+            .map((item) => {
+              const fresh = byId.get(String(item.id));
+              return {
+                ...item,
+                ...fresh,
+                quantity: Math.min(item.quantity, Math.max(1, fresh.stock)),
+                selected: item.selected,
+              };
+            }),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   // ADD PRODUCT TO CART
   function addToCart(product) {

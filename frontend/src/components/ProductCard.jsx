@@ -62,7 +62,11 @@ export default function ProductCard({
           {product.category}
         </span>
 
-        <h3>{product.name}</h3>
+        <h3>
+          <Link to={`/product/${product.id}`} className="product-title-link">
+            {product.name}
+          </Link>
+        </h3>
 
         <div className="rating">
           <Star size={15} fill="currentColor" />

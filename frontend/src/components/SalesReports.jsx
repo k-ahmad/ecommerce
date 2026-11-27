@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   TrendingUp,
   ShoppingBag,
@@ -11,34 +11,8 @@ import {
 const money = (value) =>
   Number(value || 0).toLocaleString("en-PK");
 
-export default function SalesReports() {
-  const [orders, setOrders] = useState([]);
-
-  function loadOrders() {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("orders") || "[]"
-      );
-      setOrders(Array.isArray(saved) ? saved : []);
-    } catch {
-      setOrders([]);
-    }
-  }
-
-  useEffect(() => {
-    loadOrders();
-
-    window.addEventListener("ordersUpdated", loadOrders);
-    window.addEventListener("storage", loadOrders);
-    window.addEventListener("focus", loadOrders);
-
-    return () => {
-      window.removeEventListener("ordersUpdated", loadOrders);
-      window.removeEventListener("storage", loadOrders);
-      window.removeEventListener("focus", loadOrders);
-    };
-  }, []);
-
+// Orders Admin page se aate hain (server se load hue)
+export default function SalesReports({ orders = [] }) {
   const report = useMemo(() => {
     const delivered = orders.filter(
       (order) => order.status === "Delivered"
@@ -61,7 +35,7 @@ export default function SalesReports() {
 
       const total = delivered
         .filter((order) => {
-          const orderDate = new Date(order.date);
+          const orderDate = new Date(order.created_at || order.date);
           return (
             !Number.isNaN(orderDate.getTime()) &&
             orderDate.getFullYear() === year &&

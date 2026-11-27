@@ -1,47 +1,22 @@
+import { apiData } from "../api/client";
 
-const REVIEW_KEY = "productReviews";
-
-export function getReviews(productId) {
-  try {
-    const reviews = JSON.parse(
-      localStorage.getItem(REVIEW_KEY) || "[]"
-    );
-
-    if (!Array.isArray(reviews)) return [];
-
-    return reviews.filter(
-      (review) => String(review.productId) === String(productId)
-    );
-  } catch (error) {
-    console.error("Reviews loading error:", error);
-    return [];
-  }
+// Review: { id, product_id, user_id, userName, rating, comment, created_at }
+export async function fetchReviews(productId) {
+  return apiData(`/products/${productId}/reviews`);
 }
 
-export function saveReview(review) {
-  try {
-    const reviews = JSON.parse(
-      localStorage.getItem(REVIEW_KEY) || "[]"
-    );
+/** Login zaroori. Ek user ek product par sirf ek review de sakta hai. */
+export async function addReview(productId, { rating, comment }) {
+  const review = await apiData(`/products/${productId}/reviews`, {
+    method: "POST",
+    body: { rating: Number(rating), comment },
+  });
+  // Product ki average rating badal gayi
+  window.dispatchEvent(new Event("productsUpdated"));
+  return review;
+}
 
-    const updatedReviews = [
-      ...reviews,
-      {
-        ...review,
-        id: Date.now(),
-      },
-    ];
-
-    localStorage.setItem(
-      REVIEW_KEY,
-      JSON.stringify(updatedReviews)
-    );
-
-    window.dispatchEvent(new Event("reviewsUpdated"));
-
-    return true;
-  } catch (error) {
-    console.error("Review saving error:", error);
-    return false;
-  }
+export async function deleteReview(reviewId) {
+  await apiData(`/reviews/${reviewId}`, { method: "DELETE" });
+  window.dispatchEvent(new Event("productsUpdated"));
 }

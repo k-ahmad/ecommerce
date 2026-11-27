@@ -1,13 +1,8 @@
 
-import { getProducts } from "../data/productStore";
-import { getCategories } from "../data/categoryStore";
-import {
-  getWishlist,
-  toggleWishlist as updateWishlist,
-} from "../data/wishlistStore";
+import { useCategories, useProducts, useWishlist } from "../data/hooks";
 
 import "../App.css";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 
@@ -27,31 +22,12 @@ import {
 
 function Home({ addToCart }) {
   const [search, setSearch] = useState("");
-  const [products] = useState(getProducts);
-  const [categories] = useState(getCategories);
+  const { products, loading, error } = useProducts();
+  const categories = useCategories();
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  // WISHLIST STATE
-  const [wishlist, setWishlist] = useState(getWishlist);
-
-  // LISTEN FOR WISHLIST CHANGES
-  useEffect(() => {
-    function refreshWishlist() {
-      setWishlist(getWishlist());
-    }
-
-    window.addEventListener("wishlistUpdated", refreshWishlist);
-
-    return () => {
-      window.removeEventListener("wishlistUpdated", refreshWishlist);
-    };
-  }, []);
-
-  // ADD OR REMOVE PRODUCT FROM WISHLIST
-  function handleWishlist(productId) {
-    const updated = updateWishlist(productId);
-    setWishlist(updated);
-  }
+  // WISHLIST (server par save hoti hai)
+  const { wishlist, handleWishlist } = useWishlist();
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch = product.name
@@ -251,6 +227,9 @@ function Home({ addToCart }) {
               </button>
             )}
           </div>
+
+          {loading && <p className="section-subtitle">Loading products...</p>}
+          {error && <p className="section-subtitle">{error}</p>}
 
           <div className="product-grid">
             {filteredProducts.map((product, index) => {

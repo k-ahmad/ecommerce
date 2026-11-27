@@ -9,6 +9,7 @@ import {
   Sparkles,
   ShieldCheck,
 } from "lucide-react";
+import { login as loginRequest } from "../data/authStore";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -16,72 +17,22 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  function login(e) {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function login(e) {
     e.preventDefault();
+    if (submitting) return;
 
-    const enteredEmail = email.trim().toLowerCase();
-
-    // ADMIN LOGIN
-    if (
-      enteredEmail === "admin@gmail.com" &&
-      password === "Admin@123"
-    ) {
-      const adminUser = {
-        id: "admin-001",
-        name: "Store Admin",
-        email: "admin@gmail.com",
-        role: "admin",
-        isBlocked: false,
-      };
-
-      localStorage.setItem("demoUser", JSON.stringify(adminUser));
-
-      alert("Admin Login Successful!");
-      navigate("/admin");
-      return;
-    }
-
-    // CUSTOMER LOGIN
-    let users = [];
-
+    setSubmitting(true);
     try {
-      users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
+      // Admin aur customer dono ka login server check karta hai
+      const user = await loginRequest(email, password);
+      navigate(user.role === "admin" ? "/admin" : "/account");
     } catch (error) {
-      console.error("Users loading error:", error);
+      alert(error.message);
+    } finally {
+      setSubmitting(false);
     }
-
-    const user = users.find(
-      (item) =>
-        item.email?.toLowerCase() === enteredEmail &&
-        item.password === password
-    );
-
-    if (!user) {
-      alert("Invalid email or password!");
-      return;
-    }
-
-    if (user.isBlocked) {
-      alert(
-        "Your account has been blocked. Please contact support."
-      );
-      return;
-    }
-
-    const customerUser = {
-      ...user,
-      role: "customer",
-    };
-
-    localStorage.setItem(
-      "demoUser",
-      JSON.stringify(customerUser)
-    );
-
-    alert("Customer Login Successful!");
-    navigate("/account");
   }
 
   return (
@@ -200,8 +151,12 @@ export default function Login() {
               </Link>
             </div>
 
-            <button type="submit" className="login-submit">
-              Login to Account
+            <button
+              type="submit"
+              className="login-submit"
+              disabled={submitting}
+            >
+              {submitting ? "Logging in..." : "Login to Account"}
               <ArrowRight size={19} />
             </button>
 

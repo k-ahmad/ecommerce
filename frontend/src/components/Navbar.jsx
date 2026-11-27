@@ -9,10 +9,16 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getWishlist } from "../data/wishlistStore";
+import { getCurrentUser, isLoggedIn } from "../api/client";
+import { logout } from "../data/authStore";
+
+function readUser() {
+  return isLoggedIn() ? getCurrentUser() : null;
+}
 
 export default function Navbar({ cartCount = 0 }) {
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(readUser);
   const [wishlistCount, setWishlistCount] = useState(
     () => getWishlist().length
   );
@@ -20,19 +26,19 @@ export default function Navbar({ cartCount = 0 }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Login user ki information load karo
+  // Login user ki information load karo (login/logout par update)
   useEffect(() => {
-    try {
-      const savedUser = JSON.parse(
-        localStorage.getItem("demoUser") || "null"
-      );
-
-      setUser(savedUser);
-    } catch (error) {
-      console.error("User loading error:", error);
-      setUser(null);
-    }
+    setUser(readUser());
   }, [location.pathname]);
+
+  useEffect(() => {
+    function refreshUser() {
+      setUser(readUser());
+    }
+
+    window.addEventListener("authChanged", refreshUser);
+    return () => window.removeEventListener("authChanged", refreshUser);
+  }, []);
 
   // Wishlist count update karo
   useEffect(() => {
@@ -55,7 +61,7 @@ export default function Navbar({ cartCount = 0 }) {
 
   // Logout function
   function handleLogout() {
-    localStorage.removeItem("demoUser");
+    logout();
 
     setUser(null);
     setOpen(false);
@@ -127,6 +133,27 @@ export default function Navbar({ cartCount = 0 }) {
               {label}
             </NavLink>
           ))}
+
+          {/* Mobile menu: login/register/logout yahan dikhte hain */}
+          <div className="nav-mobile-auth">
+            {!user && (
+              <>
+                <Link to="/login" className="secondary-btn" onClick={() => setOpen(false)}>
+                  Login
+                </Link>
+                <Link to="/register" className="primary-btn" onClick={() => setOpen(false)}>
+                  Register
+                </Link>
+              </>
+            )}
+
+            {user && (
+              <button type="button" className="secondary-btn" onClick={handleLogout}>
+                <LogOut size={16} />
+                Logout
+              </button>
+            )}
+          </div>
         </nav>
 
         <div className="nav-actions">
@@ -146,21 +173,21 @@ export default function Navbar({ cartCount = 0 }) {
             <>
               <Link
                 to="/login"
-                className="secondary-btn"
+                className="secondary-btn nav-desktop-only"
               >
                 Login
               </Link>
 
               <Link
                 to="/register"
-                className="primary-btn"
+                className="primary-btn nav-desktop-only"
               >
                 Register
               </Link>
             </>
           )}
 
-          {user?.role === "customer" && (
+          {user?.role !== "admin" && (
             <Link
               to="/cart"
               className="icon-btn cart-btn"
@@ -174,7 +201,7 @@ export default function Navbar({ cartCount = 0 }) {
           {user && (
             <button
               type="button"
-              className="secondary-btn"
+              className="secondary-btn nav-desktop-only"
               onClick={handleLogout}
             >
               <LogOut size={16} />

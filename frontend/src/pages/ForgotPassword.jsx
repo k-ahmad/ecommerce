@@ -1,140 +1,75 @@
-
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { forgotPassword, resetPassword } from "../data/authStore";
 
+// Step 1: email do -> server 6 digit code email karta hai
+// Step 2: code + naya password -> server password badal deta hai
 export default function ForgotPassword() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [enteredCode, setEnteredCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [step, setStep] = useState(1);
   const [message, setMessage] = useState("");
-  const [demoCode, setDemoCode] = useState("");
+  const [info, setInfo] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // FIND REGISTERED USER AND GENERATE DEMO CODE
-  function sendResetCode(e) {
+  async function sendResetCode(e) {
     e.preventDefault();
+    if (loading) return;
 
-    let users = [];
-
+    setMessage("");
+    setLoading(true);
     try {
-      users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
+      setInfo(await forgotPassword(email));
+      setStep(2);
     } catch (error) {
-      console.error("Users loading error:", error);
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const enteredEmail = email.trim().toLowerCase();
-
-    const user = users.find(
-      (item) => item.email?.toLowerCase() === enteredEmail
-    );
-
-    if (!user) {
-      setMessage("This email is not registered.");
-      return;
-    }
-
-    if (user.isBlocked) {
-      setMessage("This account is blocked. Contact support.");
-      return;
-    }
-
-    const generatedCode = String(
-      Math.floor(100000 + Math.random() * 900000)
-    );
-
-    setCode(generatedCode);
-    setDemoCode(generatedCode);
-    setMessage("");
-    setStep(2);
   }
 
-  // VERIFY CODE
-  function verifyCode(e) {
+  async function handleReset(e) {
     e.preventDefault();
-
-    if (enteredCode.trim() !== code) {
-      setMessage("Incorrect verification code. Try again.");
-      return;
-    }
+    if (loading) return;
 
     setMessage("");
-    setStep(3);
-  }
-
-  // SAVE NEW PASSWORD
-  function resetPassword(e) {
-    e.preventDefault();
-
-    if (newPassword.length < 6) {
-      setMessage("Password must contain at least 6 characters.");
-      return;
-    }
 
     if (newPassword !== confirmPassword) {
       setMessage("Passwords do not match.");
       return;
     }
 
-    let users = [];
-
+    setLoading(true);
     try {
-      users = JSON.parse(
-        localStorage.getItem("users") || "[]"
-      );
+      await resetPassword(email, code, newPassword);
+      alert("Password reset successfully! Please login.");
+      navigate("/login");
     } catch (error) {
-      console.error("Users loading error:", error);
-      setMessage("Unable to load user accounts.");
-      return;
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const updatedUsers = users.map((user) =>
-      user.email?.toLowerCase() === email.trim().toLowerCase()
-        ? {
-            ...user,
-            password: newPassword,
-          }
-        : user
-    );
-
-    localStorage.setItem(
-      "users",
-      JSON.stringify(updatedUsers)
-    );
-
-    // Clear reset information
-    setCode("");
-    setDemoCode("");
-    setEnteredCode("");
-    setNewPassword("");
-    setConfirmPassword("");
-
-    alert("Password reset successfully! Please login.");
-    navigate("/login");
   }
+
+  const errorText = message && (
+    <p style={{ color: "#ef4444", marginTop: "12px" }}>{message}</p>
+  );
 
   return (
     <main className="container section">
       <div className="form-card">
-        <h1 className="section-heading">
-          Forgot Password
-        </h1>
+        <h1 className="section-heading">Forgot Password</h1>
 
         <p style={{ marginBottom: "22px" }}>
           {step === 1 &&
-            "Enter your registered email to start resetting your password."}
-
+            "Enter your registered email. We will send you a 6-digit reset code."}
           {step === 2 &&
-            "Enter the 6-digit verification code shown below."}
-
-          {step === 3 &&
-            "Create a new password for your account."}
+            "Check your email for the 6-digit code, then create a new password."}
         </p>
 
         {/* STEP 1: EMAIL */}
@@ -150,25 +85,26 @@ export default function ForgotPassword() {
               onChange={(e) => setEmail(e.target.value)}
             />
 
-            {message && (
-              <p style={{ color: "#ef4444", marginTop: "12px" }}>
-                {message}
-              </p>
-            )}
+            {errorText}
 
             <button
               type="submit"
               className="primary-btn"
               style={{ marginTop: "20px" }}
+              disabled={loading}
             >
-              Generate Reset Code
+              {loading ? "Sending..." : "Send Reset Code"}
             </button>
           </form>
         )}
 
-        {/* STEP 2: VERIFY CODE */}
+        {/* STEP 2: CODE + NEW PASSWORD */}
         {step === 2 && (
-          <form onSubmit={verifyCode}>
+          <form onSubmit={handleReset}>
+            {info && (
+              <p style={{ color: "#a3e635", marginBottom: "16px" }}>{info}</p>
+            )}
+
             <label>Verification Code</label>
 
             <input
@@ -177,79 +113,16 @@ export default function ForgotPassword() {
               maxLength="6"
               placeholder="Enter 6-digit code"
               required
-              value={enteredCode}
-              onChange={(e) =>
-                setEnteredCode(e.target.value.replace(/\D/g, ""))
-              }
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             />
 
-            <div
-              style={{
-                marginTop: "18px",
-                padding: "15px",
-                border: "1px dashed #a3e635",
-                borderRadius: "10px",
-              }}
-            >
-              <p style={{ marginBottom: "8px" }}>
-                Demo verification code:
-              </p>
-
-              <strong
-                style={{
-                  fontSize: "25px",
-                  letterSpacing: "5px",
-                  color: "#a3e635",
-                }}
-              >
-                {demoCode}
-              </strong>
-
-              <p style={{ fontSize: "12px", marginTop: "8px" }}>
-                Testing only. No email has been sent.
-              </p>
-            </div>
-
-            {message && (
-              <p style={{ color: "#ef4444", marginTop: "12px" }}>
-                {message}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="primary-btn"
-              style={{ marginTop: "20px" }}
-            >
-              Verify Code
-            </button>
-
-            <button
-              type="button"
-              className="secondary-btn"
-              style={{ marginTop: "12px", width: "100%" }}
-              onClick={() => {
-                setStep(1);
-                setMessage("");
-                setEnteredCode("");
-                setCode("");
-                setDemoCode("");
-              }}
-            >
-              Change Email
-            </button>
-          </form>
-        )}
-
-        {/* STEP 3: NEW PASSWORD */}
-        {step === 3 && (
-          <form onSubmit={resetPassword}>
             <label>New Password</label>
 
             <input
               type="password"
-              placeholder="Enter new password"
-              minLength="6"
+              placeholder="At least 8 characters, letters and numbers"
+              minLength="8"
               required
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -260,31 +133,40 @@ export default function ForgotPassword() {
             <input
               type="password"
               placeholder="Confirm new password"
-              minLength="6"
+              minLength="8"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
 
-            {message && (
-              <p style={{ color: "#ef4444", marginTop: "12px" }}>
-                {message}
-              </p>
-            )}
+            {errorText}
 
             <button
               type="submit"
               className="primary-btn"
               style={{ marginTop: "20px" }}
+              disabled={loading}
             >
-              Reset Password
+              {loading ? "Saving..." : "Reset Password"}
+            </button>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              style={{ marginTop: "12px", width: "100%" }}
+              onClick={() => {
+                setStep(1);
+                setMessage("");
+                setCode("");
+              }}
+            >
+              Change Email / Resend Code
             </button>
           </form>
         )}
 
         <p style={{ marginTop: "22px" }}>
-          Remember your password?{" "}
-          <Link to="/login">Back to Login</Link>
+          Remember your password? <Link to="/login">Back to Login</Link>
         </p>
       </div>
     </main>

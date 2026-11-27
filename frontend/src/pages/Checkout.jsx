@@ -11,31 +11,20 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  getProducts,
-  saveProducts,
-} from "../data/productStore";
-
 import { validateCoupon } from "../data/couponStore";
+import { deliveryFeeFor, placeOrder as submitOrder } from "../data/orderStore";
+import { getCurrentUser, isLoggedIn } from "../api/client";
 
 export default function Checkout({ cart, clearCart, removeFromCart }) {
   const navigate = useNavigate();
 
-  function getCurrentUser() {
-    try {
-      return JSON.parse(localStorage.getItem("demoUser") || "null");
-    } catch {
-      return null;
-    }
-  }
-
-  const currentUser = getCurrentUser();
+  const currentUser = isLoggedIn() ? getCurrentUser() : null;
 
   const [form, setForm] = useState({
     name: currentUser?.name || "",
     phone: currentUser?.phone || "",
-    address: "",
-    city: "",
+    address: currentUser?.address || "",
+    city: currentUser?.city || "",
   });
 
   const [error, setError] = useState("");
@@ -56,7 +45,9 @@ export default function Checkout({ cart, clearCart, removeFromCart }) {
     ? appliedCoupon.discount
     : 0;
 
-  const total = Math.max(0, subtotal - discount);
+  // Delivery fee ka hisaab server wala hi hai (backend .env se match hona chahiye)
+  const deliveryFee = deliveryFeeFor(subtotal);
+  const total = Math.max(0, subtotal - discount) + deliveryFee;
 
   function handleChange(e) {
     setForm({
@@ -65,11 +56,11 @@ export default function Checkout({ cart, clearCart, removeFromCart }) {
     });
   }
 
-  function applyCoupon() {
+  async function applyCoupon() {
     setCouponError("");
     setCouponMessage("");
 
-    const result = validateCoupon(couponCode, subtotal);
+    const result = await validateCoupon(couponCode, subtotal);
 
     if (!result.valid) {
       setAppliedCoupon(null);
@@ -96,45 +87,21 @@ export default function Checkout({ cart, clearCart, removeFromCart }) {
     setCouponError("");
   }
 
-  function placeOrder(e) {
+  async function placeOrder(e) {
     e.preventDefault();
 
     if (loading) return;
 
     setError("");
 
-    const user = getCurrentUser();
-
-    if (!user) {
+    if (!isLoggedIn()) {
       setError("Please login before placing an order.");
       navigate("/login");
       return;
     }
 
-    if (user.role !== "customer") {
+    if (getCurrentUser()?.role !== "customer") {
       setError("Only customers can place orders.");
-      return;
-    }
-
-    let users = [];
-
-    try {
-      users = JSON.parse(localStorage.getItem("users") || "[]");
-    } catch (error) {
-      console.error("Users loading error:", error);
-    }
-
-    const savedUser = users.find(
-      (item) =>
-        item.email?.toLowerCase() === user.email?.toLowerCase()
-    );
-
-    if (!savedUser || savedUser.isBlocked) {
-      localStorage.removeItem("demoUser");
-      setError(
-        "Your account is blocked or unavailable. Please login again."
-      );
-      navigate("/login");
       return;
     }
 
@@ -155,174 +122,30 @@ export default function Checkout({ cart, clearCart, removeFromCart }) {
 
     setLoading(true);
 
-    let originalProducts = [];
-    let stockUpdated = false;
-
     try {
-      // Coupon ko order place karte waqt dobara verify karo
-      let finalCoupon = null;
-      let finalDiscount = 0;
-
-      if (appliedCoupon) {
-        const result = validateCoupon(
-          appliedCoupon.code,
-          subtotal
-        );
-
-        if (!result.valid) {
-          throw new Error(
-            result.error || "Your coupon is no longer valid."
-          );
-        }
-
-        finalCoupon = result.coupon;
-        finalDiscount = result.discount;
-      }
-
-      const finalTotal = Math.max(
-        0,
-        subtotal - finalDiscount
-      );
-
-      // Latest products and stock load karo
-      originalProducts = getProducts();
-
-      const quantities = new Map();
-
-      for (const item of cart) {
-        const quantity = Number(item.quantity);
-
-        if (!Number.isInteger(quantity) || quantity <= 0) {
-          throw new Error(`Invalid quantity for ${item.name}.`);
-        }
-
-        const id = String(item.id);
-
-        quantities.set(
-          id,
-          (quantities.get(id) || 0) + quantity
-        );
-      }
-
-      // Stock check
-      for (const [id, quantity] of quantities) {
-        const product = originalProducts.find(
-          (item) => String(item.id) === id
-        );
-
-        if (!product) {
-          throw new Error(
-            "A product in your cart is no longer available. Please refresh your cart."
-          );
-        }
-
-        const stock = Number(product.stock);
-
-        if (!Number.isFinite(stock) || stock < 0) {
-          throw new Error(
-            `Stock information is unavailable for ${product.name}.`
-          );
-        }
-
-        if (stock < quantity) {
-          throw new Error(
-            `Sorry! Only ${stock} units of ${product.name} are available.`
-          );
-        }
-      }
-
-      // Stock deduct karo
-      const updatedProducts = originalProducts.map((product) => {
-        const quantity = quantities.get(String(product.id)) || 0;
-
-        if (quantity === 0) return product;
-
-        return {
-          ...product,
-          stock: Number(product.stock) - quantity,
-        };
-      });
-
-      const stockSaved = saveProducts(updatedProducts);
-
-      if (stockSaved === false) {
-        throw new Error(
-          "Unable to update product stock. Please try again."
-        );
-      }
-
-      stockUpdated = true;
-
-      // Old orders load karo
-      const oldOrders = JSON.parse(
-        localStorage.getItem("orders") || "[]"
-      );
-
-      if (!Array.isArray(oldOrders)) {
-        throw new Error("Unable to load previous orders.");
-      }
-
-      // Order create karo
-      const order = {
-        id: Date.now(),
-
+      // Stock, qeemat aur coupon sab server check karta hai
+      await submitOrder({
         customer: {
           name: form.name.trim(),
           phone: form.phone.trim(),
           address: form.address.trim(),
           city: form.city.trim(),
-          email: user.email,
         },
-
-        email: user.email,
-
-        items: cart.map((item) => ({
-          ...item,
-        })),
-
-        subtotal,
-        discount: finalDiscount,
-        coupon: finalCoupon
-          ? {
-              code: finalCoupon.code,
-              type: finalCoupon.type,
-              value: finalCoupon.value,
-            }
-          : null,
-
-        total: finalTotal,
-
-        paymentMethod: "Cash on Delivery",
-        status: "Pending",
-        date: new Date().toLocaleDateString(),
-
-        stockDeducted: true,
-        stockRestored: false,
-      };
-
-      // Order save karo
-      localStorage.setItem(
-        "orders",
-        JSON.stringify([order, ...oldOrders])
-      );
+        cart,
+        couponCode: appliedCoupon?.code,
+      });
 
       clearCart(cart.map((item) => item.id));
-
-      window.dispatchEvent(new Event("ordersUpdated"));
 
       alert("Your order has been placed successfully!");
 
       navigate("/orders");
-    } catch (error) {
-      console.error("Order placement error:", error);
-
-      if (stockUpdated) {
-        saveProducts(originalProducts);
+    } catch (err) {
+      if (err.status === 401) {
+        navigate("/login");
       }
 
-      setError(
-        error.message || "Unable to place your order. Please try again."
-      );
+      setError(err.message || "Unable to place your order. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -545,7 +368,11 @@ export default function Checkout({ cart, clearCart, removeFromCart }) {
 
           <div className="checkout-total">
             <span>Delivery</span>
-            <strong>Free</strong>
+            <strong>
+              {deliveryFee === 0
+                ? "Free"
+                : `Rs. ${deliveryFee.toLocaleString("en-PK")}`}
+            </strong>
           </div>
 
           <div className="checkout-total grand-total">

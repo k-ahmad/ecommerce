@@ -1,6 +1,7 @@
 
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingBag, Trash2, Plus, Minus } from "lucide-react";
+import { deliveryFeeFor } from "../data/orderStore";
 
 export default function Cart({
   cart,
@@ -16,6 +17,8 @@ export default function Cart({
     (sum, item) => sum + Number(item.price) * item.quantity,
     0
   );
+
+  const deliveryFee = selectedItems.length > 0 ? deliveryFeeFor(total) : 0;
 
   const allSelected =
     cart.length > 0 && cart.every((item) => item.selected);
@@ -128,12 +131,16 @@ export default function Cart({
 
           <div className="summary-row">
             <span>Delivery</span>
-            <strong>Free</strong>
+            <strong>
+              {deliveryFee === 0
+                ? "Free"
+                : `Rs. ${deliveryFee.toLocaleString("en-PK")}`}
+            </strong>
           </div>
 
           <div className="summary-row total-row">
             <span>Total</span>
-            <strong>Rs. {total.toLocaleString("en-PK")}</strong>
+            <strong>Rs. {(total + deliveryFee).toLocaleString("en-PK")}</strong>
           </div>
 
           <button

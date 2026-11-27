@@ -118,6 +118,7 @@ def contact():
     message = {
         "name": str(data["name"]).strip()[:80],
         "email": clean_email(data["email"]),
+        "phone": str(data.get("phone", "")).strip()[:20],
         "subject": str(data.get("subject", "")).strip()[:150],
         "message": str(data["message"]).strip()[:3000],
         "read": False,
